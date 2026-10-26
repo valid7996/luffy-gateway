@@ -9,8 +9,10 @@ use anyhow::Result;
 use backup::BackupManager;
 use dns_doctor::DnsDoctor;
 use installer::InstallerPreflight;
+use luffy_panel::PanelServer;
 use ports::PortsPageManager;
 use std::env;
+use std::sync::Arc;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -24,6 +26,14 @@ async fn main() -> Result<()> {
     println!("==================================================");
 
     match command {
+        "serve" | "panel" => {
+            let port = args
+                .get(2)
+                .and_then(|p| p.parse::<u16>().ok())
+                .unwrap_or(8080);
+            let server = Arc::new(PanelServer::new());
+            server.start_http_server(port).await?;
+        }
         "install" => {
             println!("Starting Luffy Gateway installation preflight...");
             InstallerPreflight::check_system()?;
@@ -68,6 +78,7 @@ async fn main() -> Result<()> {
         }
         _ => {
             println!("Available subcommands:");
+            println!("  luffy serve [port]  - Start the interactive Web Control Panel (default: 8080)");
             println!("  luffy install       - Run production installer");
             println!("  luffy doctor <zone> - Run 7-point DNS Doctor diagnostics");
             println!("  luffy ports         - Inspect firewall & managed ports");

@@ -1,8 +1,19 @@
-//! Web panel routes and HTTP handlers for Luffy Gateway.
+//! Web panel routes and HTTP server for Luffy Gateway.
 
 use crate::subscription::{SubFormat, SubscriptionService};
-use luffy_core::models::{Entitlement, User};
+use axum::{
+    body::Body,
+    extract::{Path as AxumPath, Query},
+    response::{Html, Redirect, Response},
+    routing::get,
+    Router,
+};
+use luffy_core::models::{EngineKind, Entitlement, User};
 use luffy_ui::{I18nManager, PanelTemplates};
+use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::sync::Arc;
+use uuid::Uuid;
 
 pub struct PanelServer {
     pub i18n: I18nManager,
@@ -25,6 +36,22 @@ impl PanelServer {
 
     pub fn handle_dashboard(&self, lang: &str) -> String {
         PanelTemplates::render_dashboard(lang, 42, 12_400, 150, &self.i18n)
+    }
+
+    pub fn handle_engines(&self, lang: &str) -> String {
+        PanelTemplates::render_engines(lang, &self.i18n)
+    }
+
+    pub fn handle_domains(&self, lang: &str) -> String {
+        PanelTemplates::render_domains(lang, &self.i18n)
+    }
+
+    pub fn handle_ports(&self, lang: &str) -> String {
+        PanelTemplates::render_ports(lang, &self.i18n)
+    }
+
+    pub fn handle_users(&self, lang: &str) -> String {
+        PanelTemplates::render_users(lang, &self.i18n)
     }
 
     pub fn handle_about(&self, lang: &str) -> String {
@@ -87,6 +114,175 @@ impl PanelServer {
         let fmt = SubFormat::from_query(format_param);
         self.sub_service
             .render_subscription(user, entitlements, used_bytes, fmt, lang)
+    }
+
+    /// Launches the live Axum HTTP server on the given port
+    pub async fn start_http_server(self: Arc<Self>, port: u16) -> Result<(), luffy_core::CoreError> {
+        let server = self.clone();
+
+        let app = Router::new()
+            .route("/", get(|| async { Redirect::permanent("/dashboard") }))
+            .route(
+                "/dashboard",
+                get({
+                    let s = server.clone();
+                    move |Query(params): Query<HashMap<String, String>>| {
+                        let s = s.clone();
+                        async move {
+                            let lang = params.get("lang").map(|s| s.as_str()).unwrap_or("fa");
+                            Html(s.handle_dashboard(lang))
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/engines",
+                get({
+                    let s = server.clone();
+                    move |Query(params): Query<HashMap<String, String>>| {
+                        let s = s.clone();
+                        async move {
+                            let lang = params.get("lang").map(|s| s.as_str()).unwrap_or("fa");
+                            Html(s.handle_engines(lang))
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/domains",
+                get({
+                    let s = server.clone();
+                    move |Query(params): Query<HashMap<String, String>>| {
+                        let s = s.clone();
+                        async move {
+                            let lang = params.get("lang").map(|s| s.as_str()).unwrap_or("fa");
+                            Html(s.handle_domains(lang))
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/ports",
+                get({
+                    let s = server.clone();
+                    move |Query(params): Query<HashMap<String, String>>| {
+                        let s = s.clone();
+                        async move {
+                            let lang = params.get("lang").map(|s| s.as_str()).unwrap_or("fa");
+                            Html(s.handle_ports(lang))
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/users",
+                get({
+                    let s = server.clone();
+                    move |Query(params): Query<HashMap<String, String>>| {
+                        let s = s.clone();
+                        async move {
+                            let lang = params.get("lang").map(|s| s.as_str()).unwrap_or("fa");
+                            Html(s.handle_users(lang))
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/about",
+                get({
+                    let s = server.clone();
+                    move |Query(params): Query<HashMap<String, String>>| {
+                        let s = s.clone();
+                        async move {
+                            let lang = params.get("lang").map(|s| s.as_str()).unwrap_or("fa");
+                            Html(s.handle_about(lang))
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/sub/{token}",
+                get({
+                    let s = server.clone();
+                    move |AxumPath(_token): AxumPath<String>, Query(params): Query<HashMap<String, String>>| {
+                        let s = s.clone();
+                        async move {
+                            let lang = params.get("lang").map(|s| s.as_str()).unwrap_or("fa");
+                            let format = params.get("format").map(|s| s.as_str());
+
+                            let demo_user = User {
+                                id: Uuid::new_v4(),
+                                name: "Demo User".to_string(),
+                                note: None,
+                                tags: vec!["vip".into()],
+                                enabled: true,
+                                expires_at: None,
+                                quota_bytes: Some(20 * 1024 * 1024 * 1024),
+                                speed_kbps: Some(4000),
+                                max_streams: Some(5),
+                                sub_token_hash: "hash".into(),
+                                created_at: chrono::Utc::now(),
+                                updated_at: chrono::Utc::now(),
+                            };
+
+                            let entitlements = vec![
+                                Entitlement {
+                                    id: Uuid::new_v4(),
+                                    user_id: demo_user.id,
+                                    engine: EngineKind::Soar,
+                                    variant: "tcp-dns".into(),
+                                    domain: "s.example.com".into(),
+                                    preset: Some("stability".into()),
+                                    client_options: serde_json::json!({}),
+                                    enabled: true,
+                                },
+                                Entitlement {
+                                    id: Uuid::new_v4(),
+                                    user_id: demo_user.id,
+                                    engine: EngineKind::SlipGate,
+                                    variant: "dnstt".into(),
+                                    domain: "t.example.com".into(),
+                                    preset: None,
+                                    client_options: serde_json::json!({ "query_size_preset": "80" }),
+                                    enabled: true,
+                                },
+                            ];
+
+                                match s.handle_subscription_request(&demo_user, &entitlements, 4 * 1024 * 1024 * 1024, format, lang) {
+                                    Ok((mime, body)) => {
+                                        Response::builder()
+                                            .header("Content-Type", mime)
+                                            .body(Body::from(body))
+                                            .unwrap()
+                                    }
+                                    Err(err) => {
+                                        Response::builder()
+                                            .status(403)
+                                            .body(Body::from(format!("Subscription Error: {err}")))
+                                            .unwrap()
+                                    }
+                                }
+                        }
+                    }
+                }),
+            );
+
+        let addr = SocketAddr::from(([0, 0, 0, 0], port));
+        let listener = tokio::net::TcpListener::bind(addr)
+            .await
+            .map_err(|e| luffy_core::CoreError::Internal(e.to_string()))?;
+
+        println!("--------------------------------------------------");
+        println!("🚀 Luffy Gateway Live Web Panel active on:");
+        println!("   http://localhost:{port}/dashboard");
+        println!("   http://127.0.0.1:{port}/dashboard");
+        println!("--------------------------------------------------");
+
+        axum::serve(listener, app)
+            .await
+            .map_err(|e| luffy_core::CoreError::Internal(e.to_string()))?;
+
+        Ok(())
     }
 }
 
