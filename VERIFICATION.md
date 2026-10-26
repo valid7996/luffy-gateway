@@ -38,4 +38,9 @@
 | **M4** | Bilingual template layout & RTL/LTR | `luffy_ui::templates::tests::test_template_rendering_rtl_ltr` | **PASS** | dir=rtl/ltr, language buttons, and responsive grid verified |
 | **M4** | Initial bundle transfer size budget | `luffy_ui::templates::tests::test_size_budget_under_1mb` | **PASS** | Zero-CDN CSS/HTML payload < 100KB (budget: 1MB) |
 | **M4** | Web panel routing & Upstream credits | `luffy_panel::server::tests::test_panel_server_routes` | **PASS** | Dashboard and About page with SlipGate attribution |
+| **M5** | One-command installer & preflight | `luffy_cli::installer::tests::test_admin_credentials_generation` | **PASS** | One-time password & 32-char private URL generated |
+| **M5** | Hardened systemd unit templates | `luffy_cli::installer::tests::test_hardened_systemd_units` | **PASS** | CAP_NET_BIND_SERVICE, ProtectSystem=strict verified |
+| **M5** | DNS Doctor Cloudflare proxy detection | `luffy_cli::dns_doctor::tests::test_dns_doctor_orange_cloud_detection` | **PASS** | Orange cloud proxy flagged with clear fix steps |
+| **M5** | Ports inspection & Firewall generator | `luffy_cli::ports::tests::test_ports_inspector` | **PASS** | 5 managed ports mapped; luffy-managed UFW rules |
+| **M5** | Backup export and restore preview | `luffy_cli::backup::tests::test_backup_and_preview` | **PASS** | Validates integrity and previews users/domains/engines |
 | **All** | Live carrier testing on Iranian ISPs | Field test execution | **NOT VERIFIED** | Requires physical device and Iranian carrier network |
