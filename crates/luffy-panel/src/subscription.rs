@@ -199,10 +199,12 @@ impl SubscriptionService {
     ) -> String {
         let is_fa = lang.starts_with("fa");
         let dir = if is_fa { "rtl" } else { "ltr" };
-        let title = if is_fa { "پورتال اشتراک Luffy" } else { "Luffy Subscription Portal" };
-        let usage_label = if is_fa { "حجم مصرفی" } else { "Traffic Usage" };
-        let user_label = if is_fa { "کاربر" } else { "User" };
-        let profiles_count = profiles.len();
+        let title = if is_fa { "پورتال اشتراک شخصی Luffy" } else { "Luffy Subscription Portal" };
+        let usage_label = if is_fa { "مصرف حجم" } else { "Data Usage" };
+        let user_label = if is_fa { "نام کاربری" } else { "Subscriber" };
+        let copy_label = if is_fa { "کپی کانفیگ" } else { "Copy Config" };
+        let copied_label = if is_fa { "کپی شد!" } else { "Copied!" };
+        let _profiles_count = profiles.len();
 
         let total_quota_str = user
             .quota_bytes
@@ -210,18 +212,40 @@ impl SubscriptionService {
             .unwrap_or_else(|| "".to_string());
 
         let used_mb = used_bytes / (1024 * 1024);
+        let percent = user
+            .quota_bytes
+            .map(|q| {
+                if q > 0 {
+                    ((used_bytes as f64 / q as f64) * 100.0).min(100.0) as u32
+                } else {
+                    0
+                }
+            })
+            .unwrap_or(25);
 
         let mut cards = String::new();
-        for p in profiles {
-            let engine_title = format!("{:?} - {}", p.engine, p.variant);
+        for (idx, p) in profiles.iter().enumerate() {
+            let engine_title = format!("{:?} · {}", p.engine, p.variant);
+            let textarea_id = format!("cfg_{}", idx);
             cards.push_str(&format!(
-                r#"<div class="card">
-                    <h3>{engine_title}</h3>
-                    <p><code>{domain}</code></p>
-                    <textarea readonly rows="3">{payload}</textarea>
+                r#"<div class="config-card">
+                    <div class="config-header">
+                        <div>
+                            <div class="config-title">{engine_title}</div>
+                            <div class="config-domain">{domain}</div>
+                        </div>
+                        <button class="btn-copy" onclick="copyConfig('{textarea_id}', this)">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                            <span>{copy_label}</span>
+                        </button>
+                    </div>
+                    <textarea id="{textarea_id}" readonly rows="3">{payload}</textarea>
                 </div>"#,
+                engine_title = engine_title,
                 domain = p.domain,
-                payload = p.config_payload
+                payload = p.config_payload,
+                textarea_id = textarea_id,
+                copy_label = copy_label
             ));
         }
 
@@ -233,21 +257,138 @@ impl SubscriptionService {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{title}</title>
     <style>
-        body {{ font-family: system-ui, -apple-system, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 20px; }}
-        .container {{ max-width: 600px; margin: 0 auto; }}
-        .status-box {{ background: #1e293b; padding: 20px; border-radius: 12px; margin-bottom: 24px; border: 1px solid #334155; }}
-        .card {{ background: #1e293b; padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid #334155; }}
-        textarea {{ width: 100%; box-sizing: border-box; background: #090d16; color: #38bdf8; border: 1px solid #475569; border-radius: 4px; padding: 8px; font-family: monospace; resize: none; }}
-        code {{ color: #a78bfa; }}
+        :root {{
+            --bg-base: #090d16;
+            --bg-card: #0f172a;
+            --bg-input: #040810;
+            --border: #1e293b;
+            --border-highlight: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --text-dim: #64748b;
+            --primary: #38bdf8;
+            --primary-glow: rgba(56, 189, 248, 0.15);
+            --success: #10b981;
+            --radius: 12px;
+        }}
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Vazirmatn', sans-serif;
+            background: var(--bg-base);
+            color: var(--text-main);
+            padding: 40px 16px;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+        }}
+        .container {{ width: 100%; max-width: 640px; }}
+        .header-card {{
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+        }}
+        .brand-pill {{
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            color: var(--primary);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 12px;
+        }}
+        h1 {{ font-size: 1.4rem; font-weight: 700; margin-bottom: 16px; }}
+        .info-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }}
+        .info-item {{ background: rgba(255,255,255,0.02); border: 1px solid var(--border); padding: 12px; border-radius: 8px; }}
+        .info-label {{ font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; }}
+        .info-val {{ font-size: 1.1rem; font-weight: 600; color: var(--text-main); }}
+        .meter-container {{ margin-top: 12px; }}
+        .meter-track {{ width: 100%; height: 6px; background: var(--bg-input); border-radius: 3px; overflow: hidden; }}
+        .meter-fill {{ width: {percent}%; height: 100%; background: linear-gradient(90deg, #0ea5e9, #38bdf8); border-radius: 3px; }}
+
+        .config-card {{
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 18px;
+            margin-bottom: 14px;
+            transition: all 0.2s ease;
+        }}
+        .config-card:hover {{ border-color: var(--border-highlight); }}
+        .config-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }}
+        .config-title {{ font-size: 0.95rem; font-weight: 600; color: var(--text-main); }}
+        .config-domain {{ font-size: 0.775rem; color: var(--text-dim); font-family: monospace; }}
+        .btn-copy {{
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--primary-glow);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            color: var(--primary);
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.775rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }}
+        .btn-copy:hover {{ background: rgba(56, 189, 248, 0.25); }}
+        textarea {{
+            width: 100%;
+            background: var(--bg-input);
+            color: #7dd3fc;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            resize: none;
+            outline: none;
+        }}
     </style>
+    <script>
+        function copyConfig(id, btn) {{
+            let ta = document.getElementById(id);
+            if (!ta) return;
+            navigator.clipboard.writeText(ta.value).then(() => {{
+                let orig = btn.innerHTML;
+                btn.innerHTML = '<span>{copied_label}</span>';
+                setTimeout(() => {{ btn.innerHTML = orig; }}, 1800);
+            }});
+        }}
+    </script>
 </head>
 <body>
     <div class="container">
-        <div class="status-box">
-            <h2>{title}</h2>
-            <p>{user_label}: <strong>{user_name}</strong></p>
-            <p>{usage_label}: <strong>{used_mb} MB{total_quota_str}</strong></p>
-            <p>Active Profiles: <strong>{profiles_count}</strong></p>
+        <div class="header-card">
+            <div class="brand-pill">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 2v20"/><path d="M5 12h14"/><circle cx="12" cy="12" r="9"/></svg>
+                <span>Luffy Subscription Portal</span>
+            </div>
+            <h1>{title}</h1>
+            <div class="info-grid">
+                <div class="info-item">
+                    <div class="info-label">{user_label}</div>
+                    <div class="info-val">{user_name}</div>
+                </div>
+                <div class="info-item">
+                    <div class="info-label">{usage_label}</div>
+                    <div class="info-val">{used_mb} MB{total_quota_str}</div>
+                </div>
+            </div>
+            <div class="meter-container">
+                <div style="display:flex; justify-content:space-between; font-size:0.75rem; color:var(--text-dim); margin-bottom:4px;">
+                    <span>Bandwidth Meter</span>
+                    <span>{percent}%</span>
+                </div>
+                <div class="meter-track">
+                    <div class="meter-fill"></div>
+                </div>
+            </div>
         </div>
         {cards}
     </div>
@@ -261,8 +402,9 @@ impl SubscriptionService {
             usage_label = usage_label,
             used_mb = used_mb,
             total_quota_str = total_quota_str,
-            profiles_count = profiles_count,
-            cards = cards
+            percent = percent,
+            cards = cards,
+            copied_label = copied_label
         )
     }
 }
