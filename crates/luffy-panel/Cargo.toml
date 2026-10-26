@@ -9,6 +9,7 @@ luffy-core = { path = "../luffy-core" }
 luffy-engines = { path = "../luffy-engines" }
 luffy-router = { path = "../luffy-router" }
 luffy-meter = { path = "../luffy-meter" }
+luffy-ui = { path = "../luffy-ui" }
 tokio.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

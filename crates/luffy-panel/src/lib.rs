@@ -1,7 +1,9 @@
 //! Luffy Panel: Web API server, authentication, SQLite state, and subscription handler.
 
+pub mod server;
 pub mod subscription;
 
+pub use server::PanelServer;
 pub use subscription::{LuffySubscriptionBundle, SubFormat, SubscriptionService};
 
 pub struct PanelConfig {
