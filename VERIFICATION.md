@@ -28,4 +28,10 @@
 | **M2** | GooseRelay settings drift & schema | `drift_tests::test_settings_registry_drift_gooserelay` | **PASS** | 100% bilingual help text present (EN/FA) |
 | **M2** | GooseRelay Apps Script generator | `luffy_engines::apps_script::tests::test_apps_script_generation` | **PASS** | `Code.gs` generation with VPS_URL and key substitution |
 | **M2** | GooseRelay Apps Script quota calculation | `luffy_engines::apps_script::tests::test_quota_estimation` | **PASS** | 20,000 requests/day limit and warnings tested |
+| **M3** | Token Bucket bandwidth rate limiter | `luffy_meter::token_bucket::tests::test_token_bucket_rate_limiting` | **PASS** | Burst and steady-state consumption validated |
+| **M3** | Quota tracking and expiration | `luffy_meter::quota_tracker::tests::test_quota_and_expiration` | **PASS** | Usage counting and instant expiration verified |
+| **M3** | Concurrent stream cap enforcement | `luffy_meter::enforcement::tests::test_enforcement_stream_cap` | **PASS** | Reject streams over limit, release allows new ones |
+| **M3** | Subscription-Userinfo header builder | `luffy_panel::subscription::tests::test_subscription_userinfo_header` | **PASS** | Standard upload/download/total/expire formatted |
+| **M3** | Subscription multi-format JSON rendering | `luffy_panel::subscription::tests::test_subscription_rendering_luffy_bundle` | **PASS** | JSON bundle contains dynamic engine configurations |
+| **M3** | Disabled user access rejection | `luffy_panel::subscription::tests::test_disabled_user_rejected` | **PASS** | Disabled / expired users receive error with 0 configs |
 | **All** | Live carrier testing on Iranian ISPs | Field test execution | **NOT VERIFIED** | Requires physical device and Iranian carrier network |

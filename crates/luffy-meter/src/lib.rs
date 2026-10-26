@@ -1,7 +1,15 @@
-//! Luffy Meter: Traffic counters, token-bucket speed limiters, and stream caps.
+//! Luffy Meter: Traffic counters, token-bucket speed limiters, quota tracking, and stream caps.
+
+pub mod enforcement;
+pub mod quota_tracker;
+pub mod token_bucket;
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+
+pub use enforcement::EnforcementManager;
+pub use quota_tracker::{QuotaResetSchedule, UserQuotaTracker};
+pub use token_bucket::TokenBucket;
 
 #[derive(Debug, Default, Clone)]
 pub struct TrafficCounter {
