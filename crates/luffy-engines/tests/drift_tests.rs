@@ -1,6 +1,6 @@
 use luffy_core::models::EngineKind;
 use luffy_core::SettingsRegistry;
-use luffy_engines::{Engine, MasterDnsAdapter, SoarAdapter};
+use luffy_engines::{Engine, GooseRelayAdapter, MasterDnsAdapter, SlipGateAdapter, SoarAdapter};
 
 #[test]
 fn test_settings_registry_drift_soar() {
@@ -36,4 +36,40 @@ fn test_settings_registry_drift_masterdns() {
 
     assert!(registry.get(EngineKind::MasterDns, "encryption").is_some());
     assert!(registry.get(EngineKind::MasterDns, "balancing_strategy").is_some());
+}
+
+#[test]
+fn test_settings_registry_drift_slipgate() {
+    let adapter = SlipGateAdapter::new();
+    let schema = adapter.settings_schema();
+    assert!(!schema.is_empty(), "SlipGate schema must not be empty");
+
+    let mut registry = SettingsRegistry::new();
+    for entry in schema {
+        assert_eq!(entry.engine, EngineKind::SlipGate);
+        assert!(!entry.help_en.is_empty(), "English help must not be empty");
+        assert!(!entry.help_fa.is_empty(), "Persian help must not be empty");
+        registry.register(entry);
+    }
+
+    assert!(registry.get(EngineKind::SlipGate, "transport").is_some());
+    assert!(registry.get(EngineKind::SlipGate, "query_size_preset").is_some());
+}
+
+#[test]
+fn test_settings_registry_drift_gooserelay() {
+    let adapter = GooseRelayAdapter::new();
+    let schema = adapter.settings_schema();
+    assert!(!schema.is_empty(), "GooseRelay schema must not be empty");
+
+    let mut registry = SettingsRegistry::new();
+    for entry in schema {
+        assert_eq!(entry.engine, EngineKind::GooseRelay);
+        assert!(!entry.help_en.is_empty(), "English help must not be empty");
+        assert!(!entry.help_fa.is_empty(), "Persian help must not be empty");
+        registry.register(entry);
+    }
+
+    assert!(registry.get(EngineKind::GooseRelay, "exit_port").is_some());
+    assert!(registry.get(EngineKind::GooseRelay, "tunnel_key").is_some());
 }
