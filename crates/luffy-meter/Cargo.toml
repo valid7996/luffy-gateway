@@ -1,0 +1,11 @@
+[package]
+name = "luffy-meter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+luffy-core = { path = "../luffy-core" }
+tokio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true

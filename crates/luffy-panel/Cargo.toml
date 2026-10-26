@@ -1,0 +1,16 @@
+[package]
+name = "luffy-panel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+luffy-core = { path = "../luffy-core" }
+luffy-engines = { path = "../luffy-engines" }
+luffy-router = { path = "../luffy-router" }
+luffy-meter = { path = "../luffy-meter" }
+tokio.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+serde.workspace = true
+serde_json.workspace = true
