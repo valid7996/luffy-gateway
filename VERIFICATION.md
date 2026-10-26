@@ -43,4 +43,7 @@
 | **M5** | DNS Doctor Cloudflare proxy detection | `luffy_cli::dns_doctor::tests::test_dns_doctor_orange_cloud_detection` | **PASS** | Orange cloud proxy flagged with clear fix steps |
 | **M5** | Ports inspection & Firewall generator | `luffy_cli::ports::tests::test_ports_inspector` | **PASS** | 5 managed ports mapped; luffy-managed UFW rules |
 | **M5** | Backup export and restore preview | `luffy_cli::backup::tests::test_backup_and_preview` | **PASS** | Validates integrity and previews users/domains/engines |
+| **M6** | Clean-room third-party attribution | Inspection of `NOTICE` & `README.md` | **PASS** | Upstream credits, AGPL-3.0 source offer, OFL 1.1 font |
+| **M6** | Field testing guide for Iran ISPs | Inspection of `FIELD-TEST.md` | **PASS** | Checklist for MCI, Irancell, Rightel, and fixed carriers |
+| **M6** | Bilingual documentation coverage | `docs/USER_GUIDE_FA.md` & `EN.md` | **PASS** | Complete step-by-step documentation in FA and EN |
 | **All** | Live carrier testing on Iranian ISPs | Field test execution | **NOT VERIFIED** | Requires physical device and Iranian carrier network |

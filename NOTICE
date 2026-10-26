@@ -1,0 +1,31 @@
+Luffy Gateway
+Copyright 2026 Luffy Gateway Contributors
+
+This product includes software developed by third-party open-source projects under their respective licenses:
+
+1. Lantern Soar & soar-rs
+   Copyright Lantern (getlantern)
+   Licensed under Apache License 2.0
+
+2. MasterDnsVPN
+   Copyright masterking32
+   Licensed under the MIT License
+
+3. SlipGate & SlipNet
+   Copyright anonvector
+   Licensed under GNU Affero General Public License v3.0 (AGPL-3.0)
+   Note: SlipGate is executed solely as a standalone external binary. Source code offer available at: https://github.com/anonvector/slipgate
+
+4. GooseRelayVPN & MooseRelayVPN
+   Copyright Kianmhz / easyfast2008
+   Licensed under the MIT License
+
+5. CottenRouter (Design Reference)
+   Copyright TaJirax
+   Licensed under the MIT License
+
+6. Vazirmatn Typography
+   Copyright Saber Rastikerdar
+   Licensed under SIL Open Font License 1.1
+
+No code, graphical assets, or proprietary formats are copied from WhiteDNS (Clean-Room implementation).
