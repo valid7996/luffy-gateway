@@ -319,7 +319,7 @@ mod tests {
     #[test]
     fn test_disabled_user_rejected() {
         let service = SubscriptionService::new();
-        let mut user = User {
+        let user = User {
             id: Uuid::new_v4(),
             name: "disabled_user".to_string(),
             note: None,

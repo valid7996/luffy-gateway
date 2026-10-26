@@ -1,7 +1,7 @@
 //! Web panel routes and HTTP handlers for Luffy Gateway.
 
 use crate::subscription::{SubFormat, SubscriptionService};
-use luffy_core::models::{EngineKind, Entitlement, User};
+use luffy_core::models::{Entitlement, User};
 use luffy_ui::{I18nManager, PanelTemplates};
 
 pub struct PanelServer {
