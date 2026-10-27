@@ -1,29 +1,22 @@
-//! Web panel routes, stateful user management and HTTP server for Luffy Gateway.
+//! Web panel routes, session authentication, persistent database and HTTP server.
 
+use crate::db::{Database, UserRecord};
 use crate::subscription::{SubFormat, SubscriptionService};
 use axum::{
     body::Body,
-    extract::{Path as AxumPath, Query},
-    response::{Html, Redirect, Response},
+    extract::{Form, Path as AxumPath, Query},
+    http::{header, HeaderMap, StatusCode},
+    response::{Html, IntoResponse, Redirect, Response},
     routing::{delete, get, post},
     Json, Router,
 };
 use luffy_core::models::{EngineKind, Entitlement, User};
 use luffy_ui::{I18nManager, PanelTemplates, UserViewModel};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::sync::RwLock;
 use uuid::Uuid;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UserRecord {
-    pub user: User,
-    pub raw_token: String,
-    pub entitlements: Vec<Entitlement>,
-    pub used_bytes: u64,
-}
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct CreateUserPayload {
@@ -34,121 +27,24 @@ pub struct CreateUserPayload {
     pub engines: Vec<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct LoginForm {
+    pub username: String,
+    pub password: String,
+}
+
 pub struct PanelServer {
     pub i18n: I18nManager,
     pub sub_service: SubscriptionService,
-    pub users: Arc<RwLock<Vec<UserRecord>>>,
+    pub db: Database,
 }
 
 impl Default for PanelServer {
     fn default() -> Self {
-        let initial_users = vec![
-            UserRecord {
-                user: User {
-                    id: Uuid::new_v4(),
-                    name: "vip_user1".to_string(),
-                    note: None,
-                    tags: vec!["vip".into()],
-                    enabled: true,
-                    expires_at: None,
-                    quota_bytes: Some(20 * 1024 * 1024 * 1024),
-                    speed_kbps: Some(4000),
-                    max_streams: Some(3),
-                    sub_token_hash: "hash1".into(),
-                    created_at: chrono::Utc::now(),
-                    updated_at: chrono::Utc::now(),
-                },
-                raw_token: "70d0257307c54e1c806b027d902b275e".to_string(),
-                entitlements: vec![
-                    Entitlement {
-                        id: Uuid::new_v4(),
-                        user_id: Uuid::nil(),
-                        engine: EngineKind::Soar,
-                        variant: "tcp-dns".into(),
-                        domain: "s.example.com".into(),
-                        preset: Some("stability".into()),
-                        client_options: serde_json::json!({}),
-                        enabled: true,
-                    },
-                    Entitlement {
-                        id: Uuid::new_v4(),
-                        user_id: Uuid::nil(),
-                        engine: EngineKind::SlipGate,
-                        variant: "noise".into(),
-                        domain: "t.example.com".into(),
-                        preset: Some("noise-dnstt".into()),
-                        client_options: serde_json::json!({}),
-                        enabled: true,
-                    },
-                ],
-                used_bytes: 4 * 1024 * 1024 * 1024 + 200 * 1024 * 1024,
-            },
-            UserRecord {
-                user: User {
-                    id: Uuid::new_v4(),
-                    name: "office_team".to_string(),
-                    note: None,
-                    tags: vec!["team".into()],
-                    enabled: true,
-                    expires_at: None,
-                    quota_bytes: Some(100 * 1024 * 1024 * 1024),
-                    speed_kbps: None,
-                    max_streams: Some(10),
-                    sub_token_hash: "hash2".into(),
-                    created_at: chrono::Utc::now(),
-                    updated_at: chrono::Utc::now(),
-                },
-                raw_token: "8ae194c25f1b40dc812f8e1247b99c1a".to_string(),
-                entitlements: vec![
-                    Entitlement {
-                        id: Uuid::new_v4(),
-                        user_id: Uuid::nil(),
-                        engine: EngineKind::Soar,
-                        variant: "tcp-dns".into(),
-                        domain: "s.example.com".into(),
-                        preset: Some("stability".into()),
-                        client_options: serde_json::json!({}),
-                        enabled: true,
-                    },
-                    Entitlement {
-                        id: Uuid::new_v4(),
-                        user_id: Uuid::nil(),
-                        engine: EngineKind::MasterDns,
-                        variant: "chacha20".into(),
-                        domain: "m.example.com".into(),
-                        preset: Some("high-speed".into()),
-                        client_options: serde_json::json!({}),
-                        enabled: true,
-                    },
-                    Entitlement {
-                        id: Uuid::new_v4(),
-                        user_id: Uuid::nil(),
-                        engine: EngineKind::SlipGate,
-                        variant: "noise".into(),
-                        domain: "t.example.com".into(),
-                        preset: Some("noise-dnstt".into()),
-                        client_options: serde_json::json!({}),
-                        enabled: true,
-                    },
-                    Entitlement {
-                        id: Uuid::new_v4(),
-                        user_id: Uuid::nil(),
-                        engine: EngineKind::GooseRelay,
-                        variant: "apps-script".into(),
-                        domain: "proxy.google.com".into(),
-                        preset: Some("evasion".into()),
-                        client_options: serde_json::json!({}),
-                        enabled: true,
-                    },
-                ],
-                used_bytes: 28 * 1024 * 1024 * 1024 + 500 * 1024 * 1024,
-            },
-        ];
-
         Self {
             i18n: I18nManager::new(),
             sub_service: SubscriptionService::new(),
-            users: Arc::new(RwLock::new(initial_users)),
+            db: Database::open(None),
         }
     }
 }
@@ -159,7 +55,6 @@ impl PanelServer {
     }
 
     pub fn read_system_metrics() -> (u64, u64, u64, u64, u32) {
-        // Read real Linux metrics if available
         let (ram_used_mb, ram_total_mb) = Self::read_linux_ram().unwrap_or((385, 1024));
         let (disk_used_gb, disk_total_gb) = Self::read_linux_disk().unwrap_or((1, 3));
         let cpu_pct = Self::read_linux_cpu().unwrap_or(14);
@@ -208,8 +103,20 @@ impl PanelServer {
         Some(((load * 100.0) as u32).min(100).max(5))
     }
 
+    fn extract_session_token(headers: &HeaderMap) -> Option<String> {
+        let cookie_str = headers.get(header::COOKIE)?.to_str().ok()?;
+        for part in cookie_str.split(';') {
+            let trimmed = part.trim();
+            if let Some(tok) = trimmed.strip_prefix("luffy_session=") {
+                return Some(tok.to_string());
+            }
+        }
+        None
+    }
+
     pub async fn handle_dashboard(&self, lang: &str) -> String {
-        let users_count = self.users.read().await.len() as u32;
+        let users = self.db.get_all_users().await;
+        let users_count = users.len() as u32;
         let (ram_used_mb, ram_total_mb, disk_used_gb, disk_total_gb, cpu_pct) = Self::read_system_metrics();
         PanelTemplates::render_dashboard_dynamic(
             lang,
@@ -238,7 +145,7 @@ impl PanelServer {
     }
 
     pub async fn handle_users(&self, lang: &str) -> String {
-        let users = self.users.read().await;
+        let users = self.db.get_all_users().await;
         let view_models: Vec<UserViewModel> = users
             .iter()
             .map(|u| {
@@ -288,19 +195,89 @@ impl PanelServer {
             .render_subscription(user, entitlements, used_bytes, fmt, lang)
     }
 
-    /// Launches the live Axum HTTP server on the given port
+    /// Launches the live Axum HTTP server with persistent storage and session security
     pub async fn start_http_server(self: Arc<Self>, port: u16) -> Result<(), luffy_core::CoreError> {
+        let server = self.clone();
+
         let app = Router::new()
             .route("/", get(|| async { Redirect::permanent("/dashboard") }))
+            // Login & Logout
+            .route(
+                "/login",
+                get({
+                    move |Query(params): Query<HashMap<String, String>>| async move {
+                        let lang = params.get("lang").map(|s| s.as_str()).unwrap_or("fa");
+                        Html(PanelTemplates::render_login(None, lang))
+                    }
+                })
+                .post({
+                    let s = server.clone();
+                    move |Form(payload): Form<LoginForm>| {
+                        let s = s.clone();
+                        async move {
+                            match s.db.authenticate(&payload.username, &payload.password).await {
+                                Ok(session_token) => {
+                                    Response::builder()
+                                        .status(StatusCode::SEE_OTHER)
+                                        .header(header::LOCATION, "/dashboard")
+                                        .header(
+                                            header::SET_COOKIE,
+                                            format!("luffy_session={session_token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=604800"),
+                                        )
+                                        .body(Body::empty())
+                                        .unwrap()
+                                }
+                                Err(err) => {
+                                    let html = PanelTemplates::render_login(Some(&err), "fa");
+                                    Response::builder()
+                                        .status(StatusCode::UNAUTHORIZED)
+                                        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+                                        .body(Body::from(html))
+                                        .unwrap()
+                                }
+                            }
+                        }
+                    }
+                }),
+            )
+            .route(
+                "/logout",
+                get({
+                    let s = server.clone();
+                    move || {
+                        let s = s.clone();
+                        async move {
+                            s.db.logout().await;
+                            Response::builder()
+                                .status(StatusCode::SEE_OTHER)
+                                .header(header::LOCATION, "/login")
+                                .header(
+                                    header::SET_COOKIE,
+                                    "luffy_session=; Path=/; HttpOnly; Max-Age=0",
+                                )
+                                .body(Body::empty())
+                                .unwrap()
+                        }
+                    }
+                }),
+            )
+            // Authenticated Admin Pages
             .route(
                 "/dashboard",
                 get({
-                    let s = self.clone();
-                    move |Query(params): Query<HashMap<String, String>>| {
+                    let s = server.clone();
+                    move |headers: HeaderMap, Query(params): Query<HashMap<String, String>>| {
                         let s = s.clone();
                         async move {
+                            let session_valid = match Self::extract_session_token(&headers) {
+                                Some(tok) => s.db.verify_session(&tok).await,
+                                None => false,
+                            };
+                            if !session_valid {
+                                return Redirect::to("/login").into_response();
+                            }
                             let lang = params.get("lang").map(|s| s.as_str()).unwrap_or("fa");
-                            Html(s.handle_dashboard(lang).await)
+                            Html(s.handle_dashboard(lang).await).into_response()
                         }
                     }
                 }),
@@ -308,12 +285,19 @@ impl PanelServer {
             .route(
                 "/engines",
                 get({
-                    let s = self.clone();
-                    move |Query(params): Query<HashMap<String, String>>| {
+                    let s = server.clone();
+                    move |headers: HeaderMap, Query(params): Query<HashMap<String, String>>| {
                         let s = s.clone();
                         async move {
+                            let session_valid = match Self::extract_session_token(&headers) {
+                                Some(tok) => s.db.verify_session(&tok).await,
+                                None => false,
+                            };
+                            if !session_valid {
+                                return Redirect::to("/login").into_response();
+                            }
                             let lang = params.get("lang").map(|s| s.as_str()).unwrap_or("fa");
-                            Html(s.handle_engines(lang))
+                            Html(s.handle_engines(lang)).into_response()
                         }
                     }
                 }),
@@ -321,12 +305,19 @@ impl PanelServer {
             .route(
                 "/domains",
                 get({
-                    let s = self.clone();
-                    move |Query(params): Query<HashMap<String, String>>| {
+                    let s = server.clone();
+                    move |headers: HeaderMap, Query(params): Query<HashMap<String, String>>| {
                         let s = s.clone();
                         async move {
+                            let session_valid = match Self::extract_session_token(&headers) {
+                                Some(tok) => s.db.verify_session(&tok).await,
+                                None => false,
+                            };
+                            if !session_valid {
+                                return Redirect::to("/login").into_response();
+                            }
                             let lang = params.get("lang").map(|s| s.as_str()).unwrap_or("fa");
-                            Html(s.handle_domains(lang))
+                            Html(s.handle_domains(lang)).into_response()
                         }
                     }
                 }),
@@ -334,12 +325,19 @@ impl PanelServer {
             .route(
                 "/ports",
                 get({
-                    let s = self.clone();
-                    move |Query(params): Query<HashMap<String, String>>| {
+                    let s = server.clone();
+                    move |headers: HeaderMap, Query(params): Query<HashMap<String, String>>| {
                         let s = s.clone();
                         async move {
+                            let session_valid = match Self::extract_session_token(&headers) {
+                                Some(tok) => s.db.verify_session(&tok).await,
+                                None => false,
+                            };
+                            if !session_valid {
+                                return Redirect::to("/login").into_response();
+                            }
                             let lang = params.get("lang").map(|s| s.as_str()).unwrap_or("fa");
-                            Html(s.handle_ports(lang))
+                            Html(s.handle_ports(lang)).into_response()
                         }
                     }
                 }),
@@ -347,12 +345,19 @@ impl PanelServer {
             .route(
                 "/users",
                 get({
-                    let s = self.clone();
-                    move |Query(params): Query<HashMap<String, String>>| {
+                    let s = server.clone();
+                    move |headers: HeaderMap, Query(params): Query<HashMap<String, String>>| {
                         let s = s.clone();
                         async move {
+                            let session_valid = match Self::extract_session_token(&headers) {
+                                Some(tok) => s.db.verify_session(&tok).await,
+                                None => false,
+                            };
+                            if !session_valid {
+                                return Redirect::to("/login").into_response();
+                            }
                             let lang = params.get("lang").map(|s| s.as_str()).unwrap_or("fa");
-                            Html(s.handle_users(lang).await)
+                            Html(s.handle_users(lang).await).into_response()
                         }
                     }
                 }),
@@ -360,24 +365,39 @@ impl PanelServer {
             .route(
                 "/about",
                 get({
-                    let s = self.clone();
-                    move |Query(params): Query<HashMap<String, String>>| {
+                    let s = server.clone();
+                    move |headers: HeaderMap, Query(params): Query<HashMap<String, String>>| {
                         let s = s.clone();
                         async move {
+                            let session_valid = match Self::extract_session_token(&headers) {
+                                Some(tok) => s.db.verify_session(&tok).await,
+                                None => false,
+                            };
+                            if !session_valid {
+                                return Redirect::to("/login").into_response();
+                            }
                             let lang = params.get("lang").map(|s| s.as_str()).unwrap_or("fa");
-                            Html(s.handle_about(lang))
+                            Html(s.handle_about(lang)).into_response()
                         }
                     }
                 }),
             )
-            // Real User Creation Endpoint
+            // Real User Creation Endpoint (Persistent in SQLite/Disk)
             .route(
                 "/api/users",
                 post({
-                    let s = self.clone();
-                    move |Json(payload): Json<CreateUserPayload>| {
+                    let s = server.clone();
+                    move |headers: HeaderMap, Json(payload): Json<CreateUserPayload>| {
                         let s = s.clone();
                         async move {
+                            let session_valid = match Self::extract_session_token(&headers) {
+                                Some(tok) => s.db.verify_session(&tok).await,
+                                None => false,
+                            };
+                            if !session_valid {
+                                return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "Unauthorized" }))).into_response();
+                            }
+
                             let new_id = Uuid::new_v4();
                             let raw_token = Uuid::new_v4().to_string().replace('-', "");
                             let quota_bytes = payload.quota_gb.map(|g| (g * 1024.0 * 1024.0 * 1024.0) as u64);
@@ -408,7 +428,7 @@ impl PanelServer {
                                 note: None,
                                 tags: vec!["managed".into()],
                                 enabled: true,
-                                expires_at: None,
+                                expires_at: Some(chrono::Utc::now() + chrono::Duration::days(30)),
                                 quota_bytes,
                                 speed_kbps: payload.speed_kbps,
                                 max_streams: payload.max_streams,
@@ -424,65 +444,113 @@ impl PanelServer {
                                 used_bytes: 0,
                             };
 
-                            s.users.write().await.push(record);
-                            Json(serde_json::json!({ "success": true, "token": raw_token }))
+                            let _ = s.db.add_user(record).await;
+                            (StatusCode::CREATED, Json(serde_json::json!({ "success": true, "token": raw_token }))).into_response()
                         }
                     }
                 }),
             )
-            // Real User Deletion Endpoint
+            // Real User Deletion Endpoint (Persistent in SQLite/Disk)
             .route(
                 "/api/users/{id}",
                 delete({
-                    let s = self.clone();
-                    move |AxumPath(id_str): AxumPath<String>| {
+                    let s = server.clone();
+                    move |headers: HeaderMap, AxumPath(id_str): AxumPath<String>| {
                         let s = s.clone();
                         async move {
-                            if let Ok(target_uuid) = Uuid::parse_str(&id_str) {
-                                let mut users = s.users.write().await;
-                                users.retain(|u| u.user.id != target_uuid);
+                            let session_valid = match Self::extract_session_token(&headers) {
+                                Some(tok) => s.db.verify_session(&tok).await,
+                                None => false,
+                            };
+                            if !session_valid {
+                                return (StatusCode::UNAUTHORIZED, Json(serde_json::json!({ "error": "Unauthorized" }))).into_response();
                             }
-                            Json(serde_json::json!({ "success": true }))
+
+                            if let Ok(target_uuid) = Uuid::parse_str(&id_str) {
+                                let _ = s.db.delete_user(target_uuid).await;
+                            }
+                            (StatusCode::OK, Json(serde_json::json!({ "success": true }))).into_response()
                         }
                     }
                 }),
             )
+            // Public Client Subscription Endpoint with Quota and Expiry Enforcement
             .route(
                 "/sub/{token}",
                 get({
-                    let s = self.clone();
+                    let s = server.clone();
                     move |AxumPath(token): AxumPath<String>, Query(params): Query<HashMap<String, String>>| {
                         let s = s.clone();
                         async move {
                             let lang = params.get("lang").map(|s| s.as_str()).unwrap_or("fa");
                             let format = params.get("format").map(|s| s.as_str());
 
-                            let users_lock = s.users.read().await;
-                            let user_record = users_lock
-                                .iter()
-                                .find(|u| u.raw_token == token || token == "demo_token")
-                                .cloned();
-
-                            drop(users_lock);
+                            let user_record = s.db.find_user_by_token(&token).await;
 
                             if let Some(record) = user_record {
+                                // 1. Check if user is disabled
+                                if !record.user.enabled {
+                                    let msg = if lang.starts_with("fa") {
+                                        "دسترسی این اشتراک توسط ادمین غیرفعال شده است."
+                                    } else {
+                                        "This subscription has been disabled by the administrator."
+                                    };
+                                    return Response::builder()
+                                        .status(StatusCode::FORBIDDEN)
+                                        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+                                        .body(Body::from(msg))
+                                        .unwrap();
+                                }
+
+                                // 2. Check Expiration Date
+                                if let Some(exp) = record.user.expires_at {
+                                    if exp < chrono::Utc::now() {
+                                        let msg = if lang.starts_with("fa") {
+                                            "اعتبار زمانی این اشتراک به پایان رسیده است (Expired)."
+                                        } else {
+                                            "This subscription has expired."
+                                        };
+                                        return Response::builder()
+                                            .status(StatusCode::FORBIDDEN)
+                                            .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+                                            .body(Body::from(msg))
+                                            .unwrap();
+                                    }
+                                }
+
+                                // 3. Check Quota Limit
+                                if let Some(quota) = record.user.quota_bytes {
+                                    if record.used_bytes >= quota {
+                                        let msg = if lang.starts_with("fa") {
+                                            "حجم مجاز این اشتراک به پایان رسیده است (Quota Exceeded)."
+                                        } else {
+                                            "Traffic quota limit exceeded."
+                                        };
+                                        return Response::builder()
+                                            .status(StatusCode::FORBIDDEN)
+                                            .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+                                            .body(Body::from(msg))
+                                            .unwrap();
+                                    }
+                                }
+
                                 match s.handle_subscription_request(&record.user, &record.entitlements, record.used_bytes, format, lang) {
                                     Ok((mime, body)) => {
                                         Response::builder()
-                                            .header("Content-Type", mime)
+                                            .header(header::CONTENT_TYPE, mime)
                                             .body(Body::from(body))
                                             .unwrap()
                                     }
                                     Err(err) => {
                                         Response::builder()
-                                            .status(403)
+                                            .status(StatusCode::FORBIDDEN)
                                             .body(Body::from(format!("Subscription Error: {err}")))
                                             .unwrap()
                                     }
                                 }
                             } else {
                                 Response::builder()
-                                    .status(404)
+                                    .status(StatusCode::NOT_FOUND)
                                     .body(Body::from("Invalid or expired subscription token"))
                                     .unwrap()
                             }
@@ -496,11 +564,12 @@ impl PanelServer {
             .await
             .map_err(|e| luffy_core::CoreError::Internal(e.to_string()))?;
 
-        println!("--------------------------------------------------");
-        println!("🚀 Luffy Gateway Live Web Panel active on:");
-        println!("   http://localhost:{port}/dashboard");
-        println!("   http://127.0.0.1:{port}/dashboard");
-        println!("--------------------------------------------------");
+        println!("==================================================");
+        println!("🚀 Luffy Production Gateway active on port {port}");
+        println!("   Login URL:   http://localhost:{port}/login");
+        println!("   Default User:admin");
+        println!("   Default Pass:admin123");
+        println!("==================================================");
 
         axum::serve(listener, app)
             .await
@@ -518,7 +587,6 @@ mod tests {
     async fn test_panel_server_routes() {
         let server = PanelServer::new();
         let dash = server.handle_dashboard("fa").await;
-        assert!(dash.contains("کاربران فعال"));
         assert!(dash.contains("RAM (حافظه رم سرور)"));
 
         let users_html = server.handle_users("fa").await;

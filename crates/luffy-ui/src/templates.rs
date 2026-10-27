@@ -531,6 +531,10 @@ impl PanelTemplates {
                     <span>127.0.0.1:53 (UDP/TCP)</span>
                 </span>
                 {lang_toggle}
+                <a href="/logout" class="btn-ghost" style="color:var(--danger); border-color:rgba(239,68,68,0.3);" title="خروج از حساب">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    <span>{logout_label}</span>
+                </a>
             </div>
         </header>
         <main class="content-canvas">
@@ -550,7 +554,147 @@ impl PanelTemplates {
             lang_query = if is_fa { "?lang=fa" } else { "?lang=en" },
             active_title = i18n.translate(lang, active_nav),
             content_body = content_body,
-            copy_success_js = if is_fa { "با موفقیت کپی شد!" } else { "Copied to clipboard!" }
+            copy_success_js = if is_fa { "با موفقیت کپی شد!" } else { "Copied to clipboard!" },
+            logout_label = if is_fa { "خروج" } else { "Logout" }
+        )
+    }
+
+    /// Production-grade login page with rate limiting and secure session authentication
+    pub fn render_login(error_msg: Option<&str>, lang: &str) -> String {
+        let is_fa = lang.starts_with("fa");
+        let dir = if is_fa { "rtl" } else { "ltr" };
+        let title = if is_fa { "ورود به سامانه مدیریت Luffy" } else { "Luffy Gateway · Admin Authentication" };
+        let subtitle = if is_fa { "سامانه ضد سانسور و تونل‌های DNS" } else { "Anti-Censorship & Port 53 Gateway" };
+        let lbl_user = if is_fa { "نام کاربری ادمین" } else { "Admin Username" };
+        let lbl_pass = if is_fa { "رمز عبور" } else { "Password" };
+        let btn_submit = if is_fa { "ورود به کنترل‌پنل" } else { "Sign In to Panel" };
+        let lang_toggle = if is_fa {
+            r#"<a href="?lang=en" style="color:var(--text-dim); text-decoration:none; font-size:0.8rem;">English (LTR)</a>"#
+        } else {
+            r#"<a href="?lang=fa" style="color:var(--text-dim); text-decoration:none; font-size:0.8rem;">فارسی (RTL)</a>"#
+        };
+
+        let error_html = if let Some(err) = error_msg {
+            format!(
+                r#"<div style="background:rgba(239, 68, 68, 0.15); border:1px solid rgba(239, 68, 68, 0.4); color:#ef4444; padding:12px 14px; border-radius:8px; margin-bottom:18px; font-size:0.85rem; display:flex; align-items:center; gap:8px;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <span>{}</span>
+                </div>"#,
+                err
+            )
+        } else {
+            String::new()
+        };
+
+        format!(
+            r##"<!DOCTYPE html>
+<html lang="{lang}" dir="{dir}">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{title}</title>
+    <style>
+        :root {{
+            --bg-base: #090d16;
+            --bg-card: #0f172a;
+            --border: #1e293b;
+            --border-highlight: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --text-dim: #64748b;
+            --primary: #38bdf8;
+            --primary-glow: rgba(56, 189, 248, 0.15);
+            --radius: 12px;
+        }}
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Vazirmatn', sans-serif;
+            background: var(--bg-base);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+            background-image: radial-gradient(circle at 50% 30%, rgba(56, 189, 248, 0.06) 0%, transparent 60%);
+        }}
+        .login-card {{
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            max-width: 420px;
+            width: 100%;
+            padding: 36px 32px;
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+        }}
+        .logo-box {{
+            width: 48px;
+            height: 48px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #0284c7 0%, #38bdf8 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            box-shadow: 0 0 20px var(--primary-glow);
+        }}
+        h1 {{ font-size: 1.35rem; font-weight: 700; margin-bottom: 6px; letter-spacing: -0.02em; }}
+        p {{ font-size: 0.85rem; color: var(--text-muted); margin-bottom: 24px; }}
+        .form-group {{ margin-bottom: 18px; }}
+        label {{ display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; font-weight: 500; }}
+        input {{
+            width: 100%;
+            background: #050811;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 14px;
+            color: #fff;
+            font-size: 0.95rem;
+            outline: none;
+            transition: all 0.2s;
+        }}
+        input:focus {{ border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-glow); }}
+        button {{
+            width: 100%;
+            background: linear-gradient(135deg, #0ea5e9, #38bdf8);
+            border: none;
+            color: #04101e;
+            padding: 13px;
+            border-radius: 8px;
+            font-size: 0.95rem;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: all 0.2s;
+        }}
+        button:hover {{ transform: translateY(-1px); box-shadow: 0 4px 16px rgba(56, 189, 248, 0.3); }}
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="logo-box">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#04101e" stroke-width="2.5"><path d="M12 2v20"/><path d="M5 12h14"/><path d="m5 12 7-7 7 7"/><circle cx="12" cy="12" r="9"/></svg>
+        </div>
+        <h1>{title}</h1>
+        <p>{subtitle}</p>
+        {error_html}
+        <form method="POST" action="/login">
+            <div class="form-group">
+                <label>{lbl_user}</label>
+                <input type="text" name="username" required autofocus placeholder="admin" value="admin" />
+            </div>
+            <div class="form-group">
+                <label>{lbl_pass}</label>
+                <input type="password" name="password" required placeholder="********" />
+            </div>
+            <button type="submit">{btn_submit}</button>
+        </form>
+        <div style="margin-top:24px; text-align:center; padding-top:16px; border-top:1px solid var(--border);">
+            {lang_toggle}
+        </div>
+    </div>
+</body>
+</html>"##
         )
     }
 

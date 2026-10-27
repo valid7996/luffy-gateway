@@ -6,3 +6,5 @@ Cargo.lock
 *.db
 *.db-shm
 *.db-wal
+*luffy_db.json
+*.tmp
