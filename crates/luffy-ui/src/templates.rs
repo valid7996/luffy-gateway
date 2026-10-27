@@ -3,6 +3,19 @@
 
 use crate::i18n::I18nManager;
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct UserViewModel {
+    pub id: String,
+    pub name: String,
+    pub token: String,
+    pub engines: Vec<String>,
+    pub quota_gb: f64,
+    pub used_gb: f64,
+    pub speed_kbps: u32,
+    pub max_streams: u32,
+    pub enabled: bool,
+}
+
 pub struct PanelTemplates;
 
 impl PanelTemplates {
@@ -549,12 +562,39 @@ impl PanelTemplates {
         router_qps: u32,
         i18n: &I18nManager,
     ) -> String {
+        Self::render_dashboard_dynamic(lang, active_users, traffic_mb, router_qps, 385, 1024, 1, 3, 12, i18n)
+    }
+
+    pub fn render_dashboard_dynamic(
+        lang: &str,
+        active_users: u32,
+        traffic_mb: u64,
+        router_qps: u32,
+        ram_used_mb: u64,
+        ram_total_mb: u64,
+        disk_used_gb: u64,
+        disk_total_gb: u64,
+        cpu_pct: u32,
+        i18n: &I18nManager,
+    ) -> String {
         let is_fa = lang.starts_with("fa");
 
         let label_active_users = i18n.translate(lang, "active_users");
         let label_traffic = i18n.translate(lang, "traffic_today");
         let label_qps = i18n.translate(lang, "router_qps");
         let label_health = if is_fa { "شاخص سلامت سرور" } else { "System Health Score" };
+
+        let ram_pct = if ram_total_mb > 0 {
+            ((ram_used_mb as f64 / ram_total_mb as f64) * 100.0).min(100.0) as u32
+        } else {
+            0
+        };
+
+        let disk_pct = if disk_total_gb > 0 {
+            ((disk_used_gb as f64 / disk_total_gb as f64) * 100.0).min(100.0) as u32
+        } else {
+            0
+        };
 
         let engines_title = i18n.translate(lang, "engines");
         let engines_desc = if is_fa {
@@ -581,24 +621,30 @@ impl PanelTemplates {
                 </div>
                 <div class="kpi-card">
                     <div class="kpi-title">
-                        <span>{label_traffic}</span>
-                        <span class="kpi-delta" style="color:var(--primary); background:var(--primary-glow);">94.2 MB/s Peak</span>
+                        <span>RAM (حافظه رم سرور)</span>
+                        <span class="kpi-delta" style="color:var(--primary); background:var(--primary-glow);">{ram_pct}% Used</span>
                     </div>
-                    <div class="kpi-val">{traffic_mb} <span class="kpi-sub">MB</span></div>
+                    <div class="kpi-val">{ram_used_mb} <span class="kpi-sub">/ {ram_total_mb} MB</span></div>
+                    <div style="width:100%; height:4px; background:var(--border); border-radius:2px; margin-top:8px;">
+                        <div style="width:{ram_pct}%; height:100%; background:var(--primary); border-radius:2px;"></div>
+                    </div>
                 </div>
                 <div class="kpi-card">
                     <div class="kpi-title">
-                        <span>{label_qps}</span>
-                        <span class="kpi-delta">Real-time</span>
+                        <span>Disk (فضای ذخیره‌سازی)</span>
+                        <span class="kpi-delta">{disk_pct}% Used</span>
+                    </div>
+                    <div class="kpi-val">{disk_used_gb} <span class="kpi-sub">/ {disk_total_gb} GB</span></div>
+                    <div style="width:100%; height:4px; background:var(--border); border-radius:2px; margin-top:8px;">
+                        <div style="width:{disk_pct}%; height:100%; background:var(--success); border-radius:2px;"></div>
+                    </div>
+                </div>
+                <div class="kpi-card">
+                    <div class="kpi-title">
+                        <span>CPU Load & QPS</span>
+                        <span class="kpi-delta" style="color:var(--success);">{cpu_pct}% Load</span>
                     </div>
                     <div class="kpi-val">{router_qps} <span class="kpi-sub">QPS</span></div>
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-title">
-                        <span>{label_health}</span>
-                        <span class="kpi-delta" style="color:var(--success);">100% OK</span>
-                    </div>
-                    <div class="kpi-val">100/100 <span class="kpi-sub">Passed</span></div>
                 </div>
             </div>
 
@@ -721,11 +767,14 @@ impl PanelTemplates {
             </div>"#,
             label_active_users = label_active_users,
             active_users = active_users,
-            label_traffic = label_traffic,
-            traffic_mb = traffic_mb,
-            label_qps = label_qps,
+            ram_pct = ram_pct,
+            ram_used_mb = ram_used_mb,
+            ram_total_mb = ram_total_mb,
+            disk_pct = disk_pct,
+            disk_used_gb = disk_used_gb,
+            disk_total_gb = disk_total_gb,
+            cpu_pct = cpu_pct,
             router_qps = router_qps,
-            label_health = label_health,
             engines_title = engines_title,
             engines_desc = engines_desc,
             view_details_label = if is_fa { "مشاهده جزئیات →" } else { "View All Engines →" },
@@ -958,9 +1007,114 @@ impl PanelTemplates {
         Self::render_base_layout(lang, "ports", &content, i18n)
     }
 
-    /// Minimalist Users & Subscription generator view
+    /// Minimalist Users & Subscription generator view with real dynamic user list and interactive modal
     pub fn render_users(lang: &str, i18n: &I18nManager) -> String {
+        let dummy = vec![
+            UserViewModel {
+                id: "usr_1".to_string(),
+                name: "vip_user1".to_string(),
+                token: "70d0257307c54e1c806b027d902b275e".to_string(),
+                engines: vec!["Soar".into(), "SlipGate".into()],
+                quota_gb: 20.0,
+                used_gb: 4.2,
+                speed_kbps: 4000,
+                max_streams: 3,
+                enabled: true,
+            },
+            UserViewModel {
+                id: "usr_2".to_string(),
+                name: "office_team".to_string(),
+                token: "8ae194c25f1b40dc812f8e1247b99c1a".to_string(),
+                engines: vec!["Soar".into(), "MasterDNS".into(), "SlipGate".into(), "GooseRelay".into()],
+                quota_gb: 100.0,
+                used_gb: 28.5,
+                speed_kbps: 0,
+                max_streams: 10,
+                enabled: true,
+            },
+        ];
+        Self::render_users_dynamic(lang, &dummy, i18n)
+    }
+
+    pub fn render_users_dynamic(lang: &str, users: &[UserViewModel], i18n: &I18nManager) -> String {
         let is_fa = lang.starts_with("fa");
+
+        let mut user_rows = String::new();
+        for u in users {
+            let pct = if u.quota_gb > 0.0 {
+                ((u.used_gb / u.quota_gb) * 100.0).min(100.0) as u32
+            } else {
+                0
+            };
+
+            let speed_str = if u.speed_kbps == 0 {
+                "Unlimited".to_string()
+            } else {
+                format!("{} kbps", u.speed_kbps)
+            };
+
+            let mut engines_badges = String::new();
+            for eng in &u.engines {
+                engines_badges.push_str(&format!(
+                    r#"<span class="badge badge-success" style="margin-inline-end:4px;">{}</span>"#,
+                    eng
+                ));
+            }
+
+            let status_badge = if u.enabled {
+                r#"<span class="badge badge-success">ACTIVE</span>"#
+            } else {
+                r#"<span class="badge badge-danger">DISABLED</span>"#
+            };
+
+            let token_preview = if u.token.len() >= 8 {
+                &u.token[..8]
+            } else {
+                &u.token
+            };
+
+            user_rows.push_str(&format!(
+                r#"<tr>
+                    <td>
+                        <div style="font-weight:600; color:var(--text-main); display:flex; align-items:center; gap:8px;">
+                            <span>{name}</span>
+                            {status_badge}
+                        </div>
+                        <div style="font-size:0.75rem; color:var(--text-dim); font-family:monospace;">Token: {token_preview}...</div>
+                    </td>
+                    <td>{engines_badges}</td>
+                    <td>
+                        <div style="font-size:0.8rem; font-weight:600;">{used_gb:.1} GB / {quota_gb:.0} GB ({pct}%)</div>
+                        <div style="width:120px; height:4px; background:var(--border); border-radius:2px; margin-top:4px;">
+                            <div style="width:{pct}%; height:100%; background:var(--primary); border-radius:2px;"></div>
+                        </div>
+                    </td>
+                    <td><code>{speed_str}</code></td>
+                    <td><code>{max_streams} Streams</code></td>
+                    <td>
+                        <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                            <a href="/sub/{token}?format=html" target="_blank" class="btn-ghost" style="padding:4px 8px; font-size:0.75rem;">{btn_portal}</a>
+                            <button class="btn-ghost" style="padding:4px 8px; font-size:0.75rem;" onclick="copyText(window.location.origin + '/sub/{token}')">{btn_copy}</button>
+                            <button class="btn-ghost" style="padding:4px 8px; font-size:0.75rem; color:var(--danger);" onclick="deleteUserRecord('{id}')">{btn_del}</button>
+                        </div>
+                    </td>
+                </tr>"#,
+                id = u.id,
+                name = u.name,
+                token = u.token,
+                token_preview = token_preview,
+                status_badge = status_badge,
+                engines_badges = engines_badges,
+                used_gb = u.used_gb,
+                quota_gb = u.quota_gb,
+                pct = pct,
+                speed_str = speed_str,
+                max_streams = u.max_streams,
+                btn_portal = if is_fa { "پورتال کاربر" } else { "Portal" },
+                btn_copy = if is_fa { "کپی لینک" } else { "Copy" },
+                btn_del = if is_fa { "حذف" } else { "Delete" }
+            ));
+        }
 
         let content = format!(
             r#"<div class="panel-card">
@@ -972,7 +1126,7 @@ impl PanelTemplates {
                         </div>
                         <div class="panel-desc">{subtitle}</div>
                     </div>
-                    <button class="btn-primary" onclick="showToast('{add_user_msg}')">
+                    <button class="btn-primary" onclick="openAddUserModal()">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                         <span>{add_user_btn}</span>
                     </button>
@@ -983,70 +1137,118 @@ impl PanelTemplates {
                             <tr><th>{col_user}</th><th>{col_entitlements}</th><th>{col_quota}</th><th>{col_rate}</th><th>{col_streams}</th><th>{col_sub}</th></tr>
                         </thead>
                         <tbody>
-                            <tr>
-                                <td>
-                                    <div style="font-weight:600; color:var(--text-main);">vip_user1</div>
-                                    <div style="font-size:0.75rem; color:var(--text-dim);">Token: 70d02573...</div>
-                                </td>
-                                <td>
-                                    <span class="badge badge-success">Soar</span>
-                                    <span class="badge badge-success">SlipGate</span>
-                                </td>
-                                <td>
-                                    <div style="font-size:0.8rem; font-weight:600;">4.2 GB / 20 GB</div>
-                                    <div style="width:100px; height:4px; background:var(--border); border-radius:2px; margin-top:4px;">
-                                        <div style="width:21%; height:100%; background:var(--primary); border-radius:2px;"></div>
-                                    </div>
-                                </td>
-                                <td><code>4000 kbps</code></td>
-                                <td><code>2 / 3 Streams</code></td>
-                                <td>
-                                    <div style="display:flex; gap:6px;">
-                                        <a href="/sub/demo_token?format=html" target="_blank" class="btn-ghost" style="padding:4px 8px; font-size:0.75rem;">{btn_portal}</a>
-                                        <button class="btn-ghost" style="padding:4px 8px; font-size:0.75rem;" onclick="copyText('http://localhost:8080/sub/demo_token')">{btn_copy}</button>
-                                    </div>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td>
-                                    <div style="font-weight:600; color:var(--text-main);">office_team</div>
-                                    <div style="font-size:0.75rem; color:var(--text-dim);">Token: 8ae194c2...</div>
-                                </td>
-                                <td>
-                                    <span class="badge badge-success">{all_engines}</span>
-                                </td>
-                                <td>
-                                    <div style="font-size:0.8rem; font-weight:600;">28.5 GB / 100 GB</div>
-                                    <div style="width:100px; height:4px; background:var(--border); border-radius:2px; margin-top:4px;">
-                                        <div style="width:28%; height:100%; background:var(--success); border-radius:2px;"></div>
-                                    </div>
-                                </td>
-                                <td><code>Unlimited</code></td>
-                                <td><code>6 / 10 Streams</code></td>
-                                <td>
-                                    <div style="display:flex; gap:6px;">
-                                        <a href="/sub/demo_token?format=html" target="_blank" class="btn-ghost" style="padding:4px 8px; font-size:0.75rem;">{btn_portal}</a>
-                                        <button class="btn-ghost" style="padding:4px 8px; font-size:0.75rem;" onclick="copyText('http://localhost:8080/sub/demo_token')">{btn_copy}</button>
-                                    </div>
-                                </td>
-                            </tr>
+                            {user_rows}
                         </tbody>
                     </table>
                 </div>
-            </div>"#,
+            </div>
+
+            <!-- Add User Interactive Modal -->
+            <div id="addUserModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(8px); z-index:999; align-items:center; justify-content:center; padding:16px;">
+                <div style="background:var(--bg-surface); border:1px solid var(--border-highlight); border-radius:var(--radius); max-width:480px; width:100%; padding:24px; box-shadow:0 16px 48px rgba(0,0,0,0.6);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                        <h3 style="font-size:1.15rem; font-weight:700; color:var(--text-main);">{modal_title}</h3>
+                        <button class="btn-ghost" onclick="closeAddUserModal()" style="padding:4px 8px;">✕</button>
+                    </div>
+                    <form id="addUserForm" onsubmit="submitNewUser(event)">
+                        <div style="margin-bottom:14px;">
+                            <label style="display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:6px;">{lbl_username}</label>
+                            <input id="newUserName" type="text" required placeholder="user_alpha" style="width:100%; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:10px; color:#fff; font-size:0.9rem; outline:none;" />
+                        </div>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+                            <div>
+                                <label style="display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:6px;">{lbl_quota}</label>
+                                <input id="newUserQuota" type="number" min="1" max="1000" value="25" style="width:100%; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:10px; color:#fff; font-size:0.9rem; outline:none;" />
+                            </div>
+                            <div>
+                                <label style="display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:6px;">{lbl_streams}</label>
+                                <input id="newUserStreams" type="number" min="1" max="50" value="3" style="width:100%; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:10px; color:#fff; font-size:0.9rem; outline:none;" />
+                            </div>
+                        </div>
+                        <div style="margin-bottom:16px;">
+                            <label style="display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:6px;">{lbl_speed}</label>
+                            <select id="newUserSpeed" style="width:100%; background:var(--bg-card); border:1px solid var(--border); border-radius:6px; padding:10px; color:#fff; font-size:0.9rem; outline:none;">
+                                <option value="0">{opt_unlimited}</option>
+                                <option value="2000">2 Mbps (Economy)</option>
+                                <option value="5000" selected>5 Mbps (Standard)</option>
+                                <option value="15000">15 Mbps (High Speed)</option>
+                            </select>
+                        </div>
+                        <div style="margin-bottom:20px;">
+                            <label style="display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:8px;">{lbl_engines}</label>
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-size:0.85rem;">
+                                <label style="display:flex; align-items:center; gap:6px;"><input type="checkbox" name="eng" value="soar" checked /> Soar Tunnel</label>
+                                <label style="display:flex; align-items:center; gap:6px;"><input type="checkbox" name="eng" value="masterdns" checked /> MasterDnsVPN</label>
+                                <label style="display:flex; align-items:center; gap:6px;"><input type="checkbox" name="eng" value="slipgate" checked /> SlipGate / Noise</label>
+                                <label style="display:flex; align-items:center; gap:6px;"><input type="checkbox" name="eng" value="gooserelay" checked /> GooseRelay Exit</label>
+                            </div>
+                        </div>
+                        <div style="display:flex; justify-content:flex-end; gap:8px;">
+                            <button type="button" class="btn-ghost" onclick="closeAddUserModal()">{btn_cancel}</button>
+                            <button type="submit" class="btn-primary">{btn_save}</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <script>
+                function openAddUserModal() {{
+                    document.getElementById('addUserModal').style.display = 'flex';
+                }}
+                function closeAddUserModal() {{
+                    document.getElementById('addUserModal').style.display = 'none';
+                }}
+                async function submitNewUser(e) {{
+                    e.preventDefault();
+                    let name = document.getElementById('newUserName').value.trim();
+                    let quota_gb = parseFloat(document.getElementById('newUserQuota').value) || 20;
+                    let max_streams = parseInt(document.getElementById('newUserStreams').value) || 3;
+                    let speed_kbps = parseInt(document.getElementById('newUserSpeed').value) || 0;
+                    let engines = Array.from(document.querySelectorAll('input[name="eng"]:checked')).map(i => i.value);
+
+                    let res = await fetch('/api/users', {{
+                        method: 'POST',
+                        headers: {{ 'Content-Type': 'application/json' }},
+                        body: JSON.stringify({{ name, quota_gb, max_streams, speed_kbps, engines }})
+                    }});
+                    if (res.ok) {{
+                        showToast('{msg_user_added}');
+                        setTimeout(() => location.reload(), 600);
+                    }} else {{
+                        showToast('Error creating user');
+                    }}
+                }}
+                async function deleteUserRecord(id) {{
+                    if (!confirm('{msg_confirm_delete}')) return;
+                    let res = await fetch('/api/users/' + id, {{ method: 'DELETE' }});
+                    if (res.ok) {{
+                        showToast('{msg_user_deleted}');
+                        setTimeout(() => location.reload(), 600);
+                    }}
+                }}
+            </script>"#,
             title = if is_fa { "مدیریت کاربران و اشتراک‌ها" } else { "Users & Metered Subscriptions" },
-            subtitle = if is_fa { "مدیریت حجم مصرفی، سقف استریم همزمان، محدودیت سرعت و فرمت‌های مختلف خروجی" } else { "Quota limits, token-bucket speed capping, stream caps, and subscription exporter" },
+            subtitle = if is_fa { "مدیریت حجم مصرفی، سقف استریم همزمان، محدودیت سرعت و تولید خودکار لینک سابسکریپشن" } else { "Quota limits, speed capping, stream caps, and automatic subscription generation" },
             add_user_btn = if is_fa { "+ ایجاد کاربر جدید" } else { "+ New User" },
-            add_user_msg = if is_fa { "فرم ایجاد کاربر باز شد" } else { "Create user modal opened" },
-            col_user = if is_fa { "نام کاربری / توکن" } else { "User / Token" },
-            col_entitlements = if is_fa { "موتورهای مجاز" } else { "Entitlements" },
+            col_user = if is_fa { "نام کاربری / وضعیت" } else { "User / Status" },
+            col_entitlements = if is_fa { "موتورهای فعال" } else { "Active Engines" },
             col_quota = if is_fa { "سهمیه حجم" } else { "Quota Usage" },
             col_rate = if is_fa { "سقف سرعت" } else { "Speed Limit" },
-            col_streams = if is_fa { "استریم فعال" } else { "Active Streams" },
-            col_sub = if is_fa { "لینک اتصال" } else { "Subscription" },
-            btn_portal = if is_fa { "پورتال وب" } else { "Web Portal" },
-            btn_copy = if is_fa { "کپی لینک" } else { "Copy URL" },
-            all_engines = if is_fa { "تمام ۴ موتور" } else { "All 4 Engines" }
+            col_streams = if is_fa { "استریم مجاز" } else { "Max Streams" },
+            col_sub = if is_fa { "لینک اتصال و عملیات" } else { "Subscription & Actions" },
+            modal_title = if is_fa { "افزودن حساب کاربری جدید" } else { "Create New User Account" },
+            lbl_username = if is_fa { "نام کاربری" } else { "Username" },
+            lbl_quota = if is_fa { "سهمیه حجم (GB)" } else { "Quota (GB)" },
+            lbl_streams = if is_fa { "استریم همزمان" } else { "Concurrent Streams" },
+            lbl_speed = if is_fa { "محدودیت سرعت" } else { "Speed Limit" },
+            opt_unlimited = if is_fa { "نامحدود (حداکثر سرعت)" } else { "Unlimited" },
+            lbl_engines = if is_fa { "موتورهای مجاز برای این کاربر" } else { "Assigned Tunnel Engines" },
+            btn_cancel = if is_fa { "انصراف" } else { "Cancel" },
+            btn_save = if is_fa { "ایجاد و ذخیره کاربر" } else { "Create User" },
+            msg_user_added = if is_fa { "کاربر جدید با موفقیت ایجاد شد!" } else { "User created successfully!" },
+            msg_user_deleted = if is_fa { "کاربر با موفقیت حذف شد" } else { "User deleted" },
+            msg_confirm_delete = if is_fa { "آیا از حذف این کاربر اطمینان دارید؟" } else { "Are you sure you want to delete this user?" },
+            user_rows = user_rows
         );
 
         Self::render_base_layout(lang, "users", &content, i18n)
