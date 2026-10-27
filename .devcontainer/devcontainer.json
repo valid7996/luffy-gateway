@@ -1,0 +1,26 @@
+{
+  "name": "Luffy Gateway Development Container",
+  "image": "mcr.microsoft.com/devcontainers/rust:1-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "configureZshAsDefaultShell": false
+    }
+  },
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": {
+      "label": "Luffy Gateway Web Panel",
+      "onAutoForward": "openBrowserOnce"
+    }
+  },
+  "postCreateCommand": "cargo build --bin luffy",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml"
+      ]
+    }
+  }
+}
