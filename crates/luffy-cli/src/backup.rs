@@ -26,6 +26,20 @@ impl BackupManager {
         }
     }
 
+    /// Writes the manifest to disk next to the working directory and returns
+    /// the concrete file path. (Encryption arrives with the persistence layer.)
+    pub fn write_manifest_file(manifest: &BackupManifest) -> Result<std::path::PathBuf, CoreError> {
+        let stamp = Utc::now().format("%Y%m%d-%H%M%S");
+        let path = std::env::current_dir()
+            .map_err(|e| CoreError::Internal(e.to_string()))?
+            .join(format!("luffy-backup-{stamp}.json"));
+
+        let json = serde_json::to_string_pretty(manifest)
+            .map_err(|e| CoreError::Internal(e.to_string()))?;
+        std::fs::write(&path, json).map_err(|e| CoreError::Internal(format!("Backup write failed: {e}")))?;
+        Ok(path)
+    }
+
     pub fn preview_restore(manifest_json: &str) -> Result<String, CoreError> {
         let manifest: BackupManifest = serde_json::from_str(manifest_json)
             .map_err(|e| CoreError::Validation(format!("Corrupt backup manifest: {e}")))?;
@@ -53,5 +67,15 @@ mod tests {
 
         assert!(preview.contains("Users to restore: 15"));
         assert!(preview.contains("Domains to restore: 3"));
+    }
+
+    #[test]
+    fn test_manifest_file_is_written() {
+        let manifest = BackupManager::create_manifest(3, 1, vec!["soar".into()]);
+        let path = BackupManager::write_manifest_file(&manifest).unwrap();
+        let content = std::fs::read_to_string(&path).unwrap();
+        assert!(content.contains("\"users_count\": 3"));
+        // Cleanup the artifact of this test run
+        let _ = std::fs::remove_file(&path);
     }
 }

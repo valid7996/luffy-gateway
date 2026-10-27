@@ -1,6 +1,7 @@
 //! Port status and firewall rule inspector.
 
 use serde::{Deserialize, Serialize};
+use std::net::{TcpListener, UdpSocket};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PortEntry {
@@ -64,6 +65,18 @@ impl PortsPageManager {
     pub fn generate_ufw_allow(port: u16, proto: &str) -> String {
         format!("ufw allow {port}/{proto} comment 'luffy-managed'")
     }
+
+    /// Real local bind-probe: reports whether anything currently occupies the
+    /// port on this host (TCP or UDP, loopback scope).
+    pub fn is_port_in_use(port: u16, proto: &str) -> bool {
+        match proto {
+            "UDP" => UdpSocket::bind(("127.0.0.1", port)).is_err(),
+            "TCP" => TcpListener::bind(("127.0.0.1", port)).is_err(),
+            // UDP/TCP combined: busy when either transport cannot be bound.
+            _ => UdpSocket::bind(("127.0.0.1", port)).is_err()
+                || TcpListener::bind(("127.0.0.1", port)).is_err(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -79,5 +92,14 @@ mod tests {
 
         let cmd = PortsPageManager::generate_ufw_allow(53, "udp");
         assert_eq!(cmd, "ufw allow 53/udp comment 'luffy-managed'");
+    }
+
+    #[test]
+    fn test_bind_probe_reflects_reality() {
+        // Ephemeral listener: must be reported as in-use while bound.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        assert!(PortsPageManager::is_port_in_use(port, "TCP"));
+        assert!(!PortsPageManager::is_port_in_use(0, "TCP"));
     }
 }

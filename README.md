@@ -33,6 +33,7 @@ luffy ports
 
 ## Documentation
 
+- [Installation Guide / راهنمای نصب](INSTALL.md)
 - [Verification Matrix & Test Evidence](VERIFICATION.md)
 - [Field Testing Guide for Iranian Carriers](FIELD-TEST.md)
 - [System Architecture](docs/ARCHITECTURE.md)
@@ -45,7 +46,7 @@ luffy ports
 
 ## Attribution & License
 
-Licensed under [Apache License 2.0](NOTICE).  
+Licensed under [Apache License 2.0](LICENSE). See also [NOTICE](NOTICE).  
 Upstream projects:
 - **Lantern Soar:** Apache-2.0
 - **MasterDnsVPN:** MIT

@@ -2,6 +2,9 @@
 //! Dispatches queries based on longest-suffix match to loopback engine backends.
 
 pub mod dns;
+pub mod server;
+
+pub use server::{DnsFrontHandle, DnsFrontServer};
 
 use dns::DnsPacketParser;
 use luffy_core::CoreError;
@@ -28,13 +31,23 @@ pub struct BackendRoute {
 #[derive(Debug, Default)]
 pub struct DnsRouter {
     routes: HashMap<String, BackendRoute>,
+    default_backend: Option<SocketAddr>,
 }
 
 impl DnsRouter {
     pub fn new() -> Self {
         Self {
             routes: HashMap::new(),
+            default_backend: None,
         }
+    }
+
+    pub fn set_default_backend(&mut self, backend: SocketAddr) {
+        self.default_backend = Some(backend);
+    }
+
+    pub fn default_backend(&self) -> Option<SocketAddr> {
+        self.default_backend
     }
 
     pub fn add_route(
@@ -65,7 +78,11 @@ impl DnsRouter {
         let mut best: Option<(&str, &BackendRoute)> = None;
 
         for (suffix, route) in &self.routes {
-            if name == *suffix || name.ends_with(&format!(".{suffix}")) {
+            let matches = name == *suffix
+                || (name.len() > suffix.len()
+                    && name.ends_with(suffix.as_str())
+                    && name.as_bytes()[name.len() - suffix.len() - 1] == b'.');
+            if matches {
                 match best {
                     Some((prev_s, _)) if suffix.len() > prev_s.len() => {
                         best = Some((suffix.as_str(), route));

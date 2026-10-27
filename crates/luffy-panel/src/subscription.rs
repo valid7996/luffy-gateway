@@ -4,6 +4,7 @@ use chrono::Utc;
 use luffy_core::models::{EngineKind, Entitlement, User};
 use luffy_core::CoreError;
 use luffy_engines::{Engine, GooseRelayAdapter, MasterDnsAdapter, SlipGateAdapter, SoarAdapter};
+use luffy_ui::escape_html;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -176,12 +177,14 @@ impl SubscriptionService {
                 Ok(("text/plain; charset=utf-8".to_string(), configs.join("\n---\n")))
             }
             SubFormat::Goose => {
-                let configs: Vec<String> = profiles
+                let configs: Vec<serde_json::Value> = profiles
                     .into_iter()
                     .filter(|p| p.engine == EngineKind::GooseRelay)
-                    .map(|p| p.config_payload)
+                    .filter_map(|p| serde_json::from_str(&p.config_payload).ok())
                     .collect();
-                Ok(("application/json".to_string(), configs.join("\n")))
+                let json = serde_json::to_string(&configs)
+                    .map_err(|e| CoreError::Internal(e.to_string()))?;
+                Ok(("application/json".to_string(), json))
             }
             SubFormat::Html => {
                 let html = self.render_landing_page(user, &profiles, used_bytes, lang);
@@ -223,9 +226,17 @@ impl SubscriptionService {
             })
             .unwrap_or(25);
 
+        let user_name = escape_html(&user.name);
+        let user_label = escape_html(user_label);
+        let usage_label = escape_html(usage_label);
+        let copy_label = escape_html(copy_label);
+        let copied_label = escape_html(copied_label);
+
         let mut cards = String::new();
         for (idx, p) in profiles.iter().enumerate() {
-            let engine_title = format!("{:?} · {}", p.engine, p.variant);
+            let engine_title = format!("{:?} · {}", p.engine, escape_html(&p.variant));
+            let domain = escape_html(&p.domain);
+            let payload = escape_html(&p.config_payload);
             let textarea_id = format!("cfg_{}", idx);
             cards.push_str(&format!(
                 r#"<div class="config-card">
@@ -242,8 +253,8 @@ impl SubscriptionService {
                     <textarea id="{textarea_id}" readonly rows="3">{payload}</textarea>
                 </div>"#,
                 engine_title = engine_title,
-                domain = p.domain,
-                payload = p.config_payload,
+                domain = domain,
+                payload = payload,
                 textarea_id = textarea_id,
                 copy_label = copy_label
             ));
@@ -398,7 +409,7 @@ impl SubscriptionService {
             dir = dir,
             title = title,
             user_label = user_label,
-            user_name = user.name,
+            user_name = user_name,
             usage_label = usage_label,
             used_mb = used_mb,
             total_quota_str = total_quota_str,

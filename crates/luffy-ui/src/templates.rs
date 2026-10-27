@@ -702,17 +702,17 @@ impl PanelTemplates {
     pub fn render_dashboard(
         lang: &str,
         active_users: u32,
-        traffic_mb: u64,
+        _traffic_mb: u64,
         router_qps: u32,
         i18n: &I18nManager,
     ) -> String {
-        Self::render_dashboard_dynamic(lang, active_users, traffic_mb, router_qps, 385, 1024, 1, 3, 12, i18n)
+        Self::render_dashboard_dynamic(lang, active_users, _traffic_mb, router_qps, 385, 1024, 1, 3, 12, i18n)
     }
 
     pub fn render_dashboard_dynamic(
         lang: &str,
         active_users: u32,
-        traffic_mb: u64,
+        _traffic_mb: u64,
         router_qps: u32,
         ram_used_mb: u64,
         ram_total_mb: u64,
@@ -724,9 +724,9 @@ impl PanelTemplates {
         let is_fa = lang.starts_with("fa");
 
         let label_active_users = i18n.translate(lang, "active_users");
-        let label_traffic = i18n.translate(lang, "traffic_today");
-        let label_qps = i18n.translate(lang, "router_qps");
-        let label_health = if is_fa { "شاخص سلامت سرور" } else { "System Health Score" };
+        let _label_traffic = i18n.translate(lang, "traffic_today");
+        let _label_qps = i18n.translate(lang, "router_qps");
+        let _label_health = if is_fa { "شاخص سلامت سرور" } else { "System Health Score" };
 
         let ram_pct = if ram_total_mb > 0 {
             ((ram_used_mb as f64 / ram_total_mb as f64) * 100.0).min(100.0) as u32
